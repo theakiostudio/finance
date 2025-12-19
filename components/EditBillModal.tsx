@@ -98,7 +98,7 @@ export default function EditBillModal({ bill, onClose, onSave }: EditBillModalPr
 
           <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
             <p className="text-sm text-purple-800 dark:text-purple-200">
-              Each person's share: £{amount ? (parseFloat(amount) / 2).toFixed(2) : "0.00"}
+              Each person&apos;s share: £{amount ? (parseFloat(amount) / 2).toFixed(2) : "0.00"}
             </p>
           </div>
 
