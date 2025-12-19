@@ -53,41 +53,59 @@ function EditableAmountInput({
   }, [bill.id]); // Intentionally ONLY depend on bill.id, NOT bill.totalAmount
 
   const handleSave = async (value: string) => {
+    console.log('[EditableAmountInput] handleSave called with value:', value);
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
     const finalAmountStr = finalAmount.toString();
     
+    console.log('[EditableAmountInput] Final amount:', finalAmount, 'String:', finalAmountStr);
+    
     // Keep the value we just typed - don't let it get reset
     setLocalAmount(finalAmountStr);
+    console.log('[EditableAmountInput] Set localAmount to:', finalAmountStr);
     
     // Immediately update the input element to preserve the value
     if (inputRef.current) {
       inputRef.current.value = finalAmountStr;
+      console.log('[EditableAmountInput] Updated input.value to:', finalAmountStr);
+    } else {
+      console.warn('[EditableAmountInput] inputRef.current is null!');
     }
     
     // Track that we saved this amount to prevent sync from overwriting it
     savedAmountRef.current = finalAmount;
     lastSyncedAmountRef.current = finalAmount;
+    console.log('[EditableAmountInput] Set savedAmountRef to:', finalAmount);
     
     // Update the first bill in the month - handleUpdateBillAmount will update all bills in the same month
     if (onUpdateBillAmount && bill) {
       // Keep editing flag true during save
       isEditingRef.current = true;
+      console.log('[EditableAmountInput] Calling onUpdateBillAmount for bill:', bill.id, 'amount:', finalAmount);
       await onUpdateBillAmount(bill.id, finalAmount);
+      console.log('[EditableAmountInput] onUpdateBillAmount completed');
       
       // Ensure the value is still in the input after save completes
       if (inputRef.current) {
+        console.log('[EditableAmountInput] After save, input.value is:', inputRef.current.value);
         inputRef.current.value = finalAmountStr;
+        console.log('[EditableAmountInput] Set input.value again to:', finalAmountStr);
       }
       
       // Clear saved ref after a delay to allow future syncs, but keep the value
       setTimeout(() => {
+        console.log('[EditableAmountInput] Timeout callback - checking input value');
         // Double-check the input still has the value
-        if (inputRef.current && inputRef.current.value !== finalAmountStr) {
-          inputRef.current.value = finalAmountStr;
+        if (inputRef.current) {
+          console.log('[EditableAmountInput] Input value in timeout:', inputRef.current.value, 'Expected:', finalAmountStr);
+          if (inputRef.current.value !== finalAmountStr) {
+            console.warn('[EditableAmountInput] Input value was reset! Restoring to:', finalAmountStr);
+            inputRef.current.value = finalAmountStr;
+          }
         }
         savedAmountRef.current = null;
         isEditingRef.current = false;
+        console.log('[EditableAmountInput] Cleared savedAmountRef and isEditingRef');
       }, 1500); // Longer delay to ensure parent state updates complete
     } else {
       savedAmountRef.current = null;
@@ -100,15 +118,19 @@ function EditableAmountInput({
   
   // Update input value from state, but only when not editing AND not just saved
   useEffect(() => {
+    console.log('[EditableAmountInput] useEffect triggered - bill.totalAmount:', bill.totalAmount, 'isEditing:', isEditingRef.current, 'savedAmount:', savedAmountRef.current);
     // Never update the input if we just saved or are editing
     if (isEditingRef.current || savedAmountRef.current !== null) {
+      console.log('[EditableAmountInput] Skipping sync - editing or just saved');
       return;
     }
     
     // Only update if the bill's totalAmount actually changed externally (not from our save)
     const billAmount = bill.totalAmount || 0;
+    console.log('[EditableAmountInput] billAmount:', billAmount, 'lastSyncedAmount:', lastSyncedAmountRef.current);
     if (Math.abs(lastSyncedAmountRef.current - billAmount) > 0.01 && inputRef.current) {
       const newValue = billAmount.toString();
+      console.log('[EditableAmountInput] Syncing input value to:', newValue);
       if (inputRef.current.value !== newValue) {
         inputRef.current.value = newValue;
         setLocalAmount(newValue);
@@ -133,6 +155,7 @@ function EditableAmountInput({
           isEditingRef.current = true;
           savedAmountRef.current = null; // Clear saved ref when user starts typing
           const newValue = e.target.value;
+          console.log('[EditableAmountInput] onChange - newValue:', newValue);
           // Update local state
           setLocalAmount(newValue);
           // Also update input directly to ensure it stays
