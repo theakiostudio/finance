@@ -22,44 +22,64 @@ function EditableAmountInput({
   monthBills: Bill[]; 
   onUpdateBillAmount?: (billId: string, amount: number) => void;
 }) {
-  const [localAmount, setLocalAmount] = useState<string>(bill.totalAmount?.toString() || "0");
-  const [isEditing, setIsEditing] = useState(false);
+  // Initialize from bill prop only once
+  const [localAmount, setLocalAmount] = useState<string>(() => bill.totalAmount?.toString() || "0");
+  const isEditingRef = useRef<boolean>(false);
   const billIdRef = useRef<string>(bill.id);
+  const lastSyncedAmountRef = useRef<number>(bill.totalAmount || 0);
+  const hasInitializedRef = useRef<boolean>(false);
   
-  // Only sync from props when bill ID changes (completely different bill)
+  // Initialize refs on mount and when bill ID changes
   useEffect(() => {
-    if (billIdRef.current !== bill.id) {
+    if (billIdRef.current !== bill.id || !hasInitializedRef.current) {
       billIdRef.current = bill.id;
-      setLocalAmount(bill.totalAmount?.toString() || "0");
-      setIsEditing(false);
+      lastSyncedAmountRef.current = bill.totalAmount || 0;
+      if (!isEditingRef.current || !hasInitializedRef.current) {
+        setLocalAmount(bill.totalAmount?.toString() || "0");
+      }
+      hasInitializedRef.current = true;
     }
   }, [bill.id]);
   
-  // Sync from props only when not editing and bill totalAmount changes externally
+  // Only sync from props when not editing and amount changed from external source
   useEffect(() => {
-    if (!isEditing) {
-      const billAmount = bill.totalAmount || 0;
-      const currentAmount = parseFloat(localAmount) || 0;
-      // Only update if significantly different (more than 0.01)
-      if (Math.abs(currentAmount - billAmount) > 0.01) {
-        setLocalAmount(billAmount.toString());
-      }
+    // CRITICAL: Skip if we're currently editing - this prevents resetting while typing
+    if (isEditingRef.current) {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bill.totalAmount, isEditing]);
+    
+    // Skip if this is a different bill
+    if (billIdRef.current !== bill.id) {
+      return;
+    }
+    
+    const billAmount = bill.totalAmount || 0;
+    // Only update if the amount actually changed externally (not from our save)
+    if (Math.abs(lastSyncedAmountRef.current - billAmount) > 0.01) {
+      setLocalAmount(billAmount.toString());
+      lastSyncedAmountRef.current = billAmount;
+    }
+  }, [bill.id, bill.totalAmount]);
 
   const handleSave = async (value: string) => {
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
+    
     // Keep the value we just typed in the input
     setLocalAmount(finalAmount.toString());
+    
+    // Update our refs AFTER setting local state
+    lastSyncedAmountRef.current = finalAmount;
+    
     // Update the first bill in the month - handleUpdateBillAmount will update all bills in the same month
     if (onUpdateBillAmount && bill) {
       await onUpdateBillAmount(bill.id, finalAmount);
-      // Reset editing state after a delay to allow the update to propagate
+      // Mark as no longer editing after save completes
       setTimeout(() => {
-        setIsEditing(false);
-      }, 300);
+        isEditingRef.current = false;
+      }, 100);
+    } else {
+      isEditingRef.current = false;
     }
   };
 
@@ -67,18 +87,23 @@ function EditableAmountInput({
     <div className="flex items-center gap-1">
       <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
       <input
+        key={`amount-input-${bill.id}`}
         type="number"
         step="0.01"
         min="0"
         value={localAmount}
         onChange={(e) => {
-          setIsEditing(true);
-          setLocalAmount(e.target.value);
+          // Set editing flag BEFORE updating state to prevent useEffect from interfering
+          isEditingRef.current = true;
+          const newValue = e.target.value;
+          setLocalAmount(newValue);
         }}
         onFocus={() => {
-          setIsEditing(true);
+          // Set editing flag immediately on focus to block any prop updates
+          isEditingRef.current = true;
         }}
         onBlur={(e) => {
+          // Save when user leaves the input
           handleSave(e.target.value);
         }}
         onKeyDown={(e) => {
