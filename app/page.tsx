@@ -205,7 +205,9 @@ export default function Home() {
             <BalanceCard 
               summary={summary} 
               currentMonth={monthNames?.current}
+              currentBills={monthNames?.currentBills}
               nextMonth={monthNames?.next}
+              nextBills={monthNames?.nextBills}
             />
           </div>
           <div className="lg:col-span-3">

@@ -21,7 +21,7 @@ export function getNextMonthBills(bills: Bill[]): Bill[] {
   });
 }
 
-export function getCurrentAndNextMonthNames(bills: Bill[]): { current: string; next: string | null } | null {
+export function getCurrentAndNextMonthNames(bills: Bill[]): { current: string; currentBills: string[]; next: string | null; nextBills: string[] } | null {
   if (bills.length === 0) return null;
   
   // Find the earliest due date (current payment month)
@@ -31,6 +31,17 @@ export function getCurrentAndNextMonthNames(bills: Bill[]): { current: string; n
   }, parseISO(bills[0].dueDate));
   
   const currentMonth = format(startOfMonth(earliestDate), "MMMM");
+  const currentMonthStart = startOfMonth(earliestDate);
+  
+  // Get unique bill names for current month
+  const currentMonthBills = bills
+    .filter(bill => {
+      const billDate = parseISO(bill.dueDate);
+      const billMonth = startOfMonth(billDate);
+      return billMonth.getTime() === currentMonthStart.getTime();
+    })
+    .map(bill => bill.name);
+  const currentBills = Array.from(new Set(currentMonthBills));
   
   // Find the next month's bills
   const sortedBills = [...bills].sort((a, b) => 
@@ -41,17 +52,32 @@ export function getCurrentAndNextMonthNames(bills: Bill[]): { current: string; n
   const nextMonthBill = sortedBills.find(bill => {
     const billDate = parseISO(bill.dueDate);
     const billMonth = startOfMonth(billDate);
-    const currentMonthStart = startOfMonth(earliestDate);
     return billMonth.getTime() > currentMonthStart.getTime();
   });
   
-  const nextMonth = nextMonthBill 
-    ? format(startOfMonth(parseISO(nextMonthBill.dueDate)), "MMMM")
-    : null;
+  let nextMonth: string | null = null;
+  let nextBills: string[] = [];
+  
+  if (nextMonthBill) {
+    const nextMonthDate = startOfMonth(parseISO(nextMonthBill.dueDate));
+    nextMonth = format(nextMonthDate, "MMMM");
+    
+    // Get unique bill names for next month
+    const nextMonthBillsList = bills
+      .filter(bill => {
+        const billDate = parseISO(bill.dueDate);
+        const billMonth = startOfMonth(billDate);
+        return billMonth.getTime() === nextMonthDate.getTime();
+      })
+      .map(bill => bill.name);
+    nextBills = Array.from(new Set(nextMonthBillsList));
+  }
   
   return {
     current: currentMonth,
+    currentBills,
     next: nextMonth,
+    nextBills,
   };
 }
 

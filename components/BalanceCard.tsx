@@ -5,18 +5,34 @@ import { BillSummary } from "@/types/expense";
 interface BalanceCardProps {
   summary: BillSummary;
   currentMonth?: string | null;
+  currentBills?: string[];
   nextMonth?: string | null;
+  nextBills?: string[];
 }
 
-export default function BalanceCard({ summary, currentMonth, nextMonth }: BalanceCardProps) {
+export default function BalanceCard({ summary, currentMonth, currentBills, nextMonth, nextBills }: BalanceCardProps) {
   return (
     <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-md p-4 text-white">
       <h2 className="text-lg font-bold mb-1">Summary</h2>
       {currentMonth && (
-        <p className="text-xs text-purple-100 mb-1">Payment: {currentMonth}</p>
+        <div className="mb-1">
+          <p className="text-xs text-purple-100">Payment: {currentMonth}</p>
+          {currentBills && currentBills.length > 0 && (
+            <p className="text-xs text-purple-200 mt-0.5">
+              ({currentBills.join(", ")})
+            </p>
+          )}
+        </div>
       )}
       {nextMonth && (
-        <p className="text-xs text-purple-100 mb-3">Next Payment: {nextMonth}</p>
+        <div className="mb-3">
+          <p className="text-xs text-purple-100">Next Payment: {nextMonth}</p>
+          {nextBills && nextBills.length > 0 && (
+            <p className="text-xs text-purple-200 mt-0.5">
+              ({nextBills.join(", ")})
+            </p>
+          )}
+        </div>
       )}
       {!currentMonth && (
         <p className="text-xs text-purple-100 mb-3">Next Payment</p>
