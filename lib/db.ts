@@ -1,8 +1,20 @@
-import { sql } from '@vercel/postgres';
 import { Bill } from '@/types/expense';
+
+// Try to import @vercel/postgres, but handle gracefully if not available
+let sql: any = null;
+try {
+  const postgres = require('@vercel/postgres');
+  sql = postgres.sql;
+} catch (error) {
+  // Database not available, will use fallback
+  console.log('Database package not available, using fallback storage');
+}
 
 // Initialize the bills table if it doesn't exist
 export async function initDatabase() {
+  if (!sql) {
+    throw new Error('Database not available');
+  }
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS bills (
@@ -27,6 +39,9 @@ export async function initDatabase() {
 
 // Fetch all bills from database
 export async function getBillsFromDB(): Promise<Bill[]> {
+  if (!sql) {
+    return [];
+  }
   try {
     await initDatabase();
     const result = await sql`
@@ -46,7 +61,7 @@ export async function getBillsFromDB(): Promise<Bill[]> {
       ORDER BY due_date ASC;
     `;
     
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       id: row.id,
       name: row.name,
       totalAmount: parseFloat(row.totalAmount),
@@ -67,6 +82,9 @@ export async function getBillsFromDB(): Promise<Bill[]> {
 
 // Save a bill to database (insert or update)
 export async function saveBillToDB(bill: Bill): Promise<void> {
+  if (!sql) {
+    throw new Error('Database not available');
+  }
   try {
     await initDatabase();
     await sql`
@@ -98,6 +116,9 @@ export async function saveBillToDB(bill: Bill): Promise<void> {
 
 // Delete a bill from database
 export async function deleteBillFromDB(billId: string): Promise<void> {
+  if (!sql) {
+    throw new Error('Database not available');
+  }
   try {
     await sql`DELETE FROM bills WHERE id = ${billId};`;
   } catch (error) {
