@@ -28,16 +28,15 @@ function EditableAmountInput({
     setLocalAmount(bill.totalAmount?.toString() || "0");
   }, [bill.totalAmount]);
 
-  const handleSave = (value: string) => {
+  const handleSave = async (value: string) => {
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
-    monthBills.forEach(b => {
-      if (onUpdateBillAmount) {
-        onUpdateBillAmount(b.id, finalAmount);
-      }
-    });
-    // Update local state to show the saved value
+    // Update local state immediately for better UX
     setLocalAmount(finalAmount.toString());
+    // Update the first bill in the month - handleUpdateBillAmount will update all bills in the same month
+    if (onUpdateBillAmount && bill) {
+      await onUpdateBillAmount(bill.id, finalAmount);
+    }
   };
 
   return (
@@ -428,9 +427,16 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                           )}
                         </div>
                         <button
-                          onClick={() => {
-                            // Toggle all bills in this month for Ebe
-                            monthBills.forEach(bill => onTogglePayment(bill.id, "Ebe"));
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            // Determine if we should set all to paid or unpaid
+                            const shouldMarkPaid = !ebePaid;
+                            // Update all bills in this month for Ebe
+                            for (const bill of monthBills) {
+                              if (bill.ebePaid !== shouldMarkPaid) {
+                                await onTogglePayment(bill.id, "Ebe");
+                              }
+                            }
                           }}
                           className={`w-8 h-8 rounded border-2 flex items-center justify-center transition-colors text-sm ${
                             ebePaid
@@ -464,9 +470,16 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                           )}
                         </div>
                         <button
-                          onClick={() => {
-                            // Toggle all bills in this month for Ire
-                            monthBills.forEach(bill => onTogglePayment(bill.id, "Ire"));
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            // Determine if we should set all to paid or unpaid
+                            const shouldMarkPaid = !irePaid;
+                            // Update all bills in this month for Ire
+                            for (const bill of monthBills) {
+                              if (bill.irePaid !== shouldMarkPaid) {
+                                await onTogglePayment(bill.id, "Ire");
+                              }
+                            }
                           }}
                           className={`w-8 h-8 rounded border-2 flex items-center justify-center transition-colors text-sm ${
                             irePaid

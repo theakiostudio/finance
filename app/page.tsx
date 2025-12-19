@@ -75,16 +75,23 @@ export default function Home() {
     if (!bill) return;
 
     const todayStr = format(new Date(), "yyyy-MM-dd");
+    const newPaidStatus = !bill[person === "Ire" ? "irePaid" : "ebePaid"];
+    
     const updatedBill: Bill = {
       ...bill,
-      [person === "Ire" ? "irePaid" : "ebePaid"]: !bill[person === "Ire" ? "irePaid" : "ebePaid"],
-      [person === "Ire" ? "irePaidDate" : "ebePaidDate"]: 
-        !bill[person === "Ire" ? "irePaid" : "ebePaid"] ? todayStr : null,
+      [person === "Ire" ? "irePaid" : "ebePaid"]: newPaidStatus,
+      [person === "Ire" ? "irePaidDate" : "ebePaidDate"]: newPaidStatus ? todayStr : null,
     };
 
+    // Update local state immediately for better UX
+    setBills(prevBills => 
+      prevBills.map(b => b.id === billId ? updatedBill : b)
+    );
+
     await updateBill(updatedBill);
+    
+    // Refresh from storage to ensure consistency
     const allBills = await getBills();
-    // Filter out past bills
     const todayDate = new Date();
     todayDate.setHours(0, 0, 0, 0);
     const futureBills = allBills.filter(bill => {
@@ -141,19 +148,41 @@ export default function Home() {
     const bill = bills.find(b => b.id === billId);
     if (!bill) return;
 
-    const updatedBill: Bill = {
-      ...bill,
-      totalAmount: Math.max(0, newAmount), // Ensure amount is not negative
-    };
+    const finalAmount = Math.max(0, newAmount);
+    
+    // Update ALL bills with the same name and month (for Electricity, Water, etc.)
+    const billDate = parseISO(bill.dueDate);
+    const billMonth = billDate.getMonth();
+    const billYear = billDate.getFullYear();
+    const billName = bill.name;
 
-    // Update the local state immediately for better UX
+    // Find all bills in the same month with the same name
+    const billsToUpdate = bills.filter(b => {
+      if (b.name !== billName) return false;
+      const bDate = parseISO(b.dueDate);
+      return bDate.getMonth() === billMonth && bDate.getFullYear() === billYear;
+    });
+
+    // Update all matching bills
+    const updatedBills = billsToUpdate.map(b => ({
+      ...b,
+      totalAmount: finalAmount,
+    }));
+
+    // Update local state immediately for better UX
     setBills(prevBills => 
-      prevBills.map(b => b.id === billId ? updatedBill : b)
+      prevBills.map(b => {
+        const updated = updatedBills.find(ub => ub.id === b.id);
+        return updated || b;
+      })
     );
     
-    await updateBill(updatedBill);
+    // Save all updated bills
+    for (const updatedBill of updatedBills) {
+      await updateBill(updatedBill);
+    }
     
-    // Also refresh from storage to ensure consistency
+    // Refresh from storage to ensure consistency
     const allBills = await getBills();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
