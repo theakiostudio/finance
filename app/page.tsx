@@ -182,16 +182,8 @@ export default function Home() {
       await updateBill(updatedBill);
     }
     
-    // Refresh from storage to ensure consistency
-    const allBills = await getBills();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const futureBills = allBills.filter(bill => {
-      const dueDate = parseISO(bill.dueDate);
-      dueDate.setHours(0, 0, 0, 0);
-      return dueDate >= today;
-    });
-    setBills(futureBills);
+    // Don't refresh from storage immediately - let the local state update persist
+    // This prevents the input from resetting while the user is typing
   };
 
   const summary = calculateBillSummary(bills);

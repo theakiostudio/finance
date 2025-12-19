@@ -24,29 +24,42 @@ function EditableAmountInput({
 }) {
   const [localAmount, setLocalAmount] = useState<string>(bill.totalAmount?.toString() || "0");
   const [isEditing, setIsEditing] = useState(false);
-  const lastSyncedAmountRef = useRef<number>(bill.totalAmount || 0);
+  const billIdRef = useRef<string>(bill.id);
   
-  // Only sync from props when not editing and the value actually changed from external source
+  // Only sync from props when bill ID changes (completely different bill)
+  useEffect(() => {
+    if (billIdRef.current !== bill.id) {
+      billIdRef.current = bill.id;
+      setLocalAmount(bill.totalAmount?.toString() || "0");
+      setIsEditing(false);
+    }
+  }, [bill.id]);
+  
+  // Sync from props only when not editing and bill totalAmount changes externally
   useEffect(() => {
     if (!isEditing) {
       const billAmount = bill.totalAmount || 0;
-      // Only update if the bill's amount changed externally (not from our own save)
-      if (Math.abs(lastSyncedAmountRef.current - billAmount) > 0.01) {
+      const currentAmount = parseFloat(localAmount) || 0;
+      // Only update if significantly different (more than 0.01)
+      if (Math.abs(currentAmount - billAmount) > 0.01) {
         setLocalAmount(billAmount.toString());
-        lastSyncedAmountRef.current = billAmount;
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bill.totalAmount, isEditing]);
 
   const handleSave = async (value: string) => {
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
+    // Keep the value we just typed in the input
+    setLocalAmount(finalAmount.toString());
     // Update the first bill in the month - handleUpdateBillAmount will update all bills in the same month
     if (onUpdateBillAmount && bill) {
       await onUpdateBillAmount(bill.id, finalAmount);
-      lastSyncedAmountRef.current = finalAmount;
-      // Allow sync from props again after a short delay
-      setTimeout(() => setIsEditing(false), 200);
+      // Reset editing state after a delay to allow the update to propagate
+      setTimeout(() => {
+        setIsEditing(false);
+      }, 300);
     }
   };
 
