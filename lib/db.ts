@@ -4,12 +4,22 @@ import { Bill } from '@/types/expense';
 let sql: any = null;
 try {
   const postgres = require('@vercel/postgres');
-  sql = postgres.sql;
   
-  // Check if POSTGRES_URL environment variable is set
+  // Check if database environment variables are set
+  // Using the specific variable names from Vercel: db_POSTGRES_URL and db_PRISMA_DATABASE_URL
+  // Map them to the standard names that @vercel/postgres expects
+  if (process.env.db_POSTGRES_URL && !process.env.POSTGRES_URL) {
+    process.env.POSTGRES_URL = process.env.db_POSTGRES_URL;
+  }
+  if (process.env.db_PRISMA_DATABASE_URL && !process.env.POSTGRES_PRISMA_URL) {
+    process.env.POSTGRES_PRISMA_URL = process.env.db_PRISMA_DATABASE_URL;
+  }
+  
   if (!process.env.POSTGRES_URL && !process.env.POSTGRES_PRISMA_URL) {
     console.log('Database package available but no connection string found. Using fallback storage.');
     sql = null;
+  } else {
+    sql = postgres.sql;
   }
 } catch (error) {
   // Database not available, will use fallback
