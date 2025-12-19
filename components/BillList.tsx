@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Bill, Person } from "@/types/expense";
 import { format, parseISO } from "date-fns";
 import { isBillOverdue } from "@/utils/balance";
@@ -22,35 +22,51 @@ function EditableAmountInput({
   monthBills: Bill[]; 
   onUpdateBillAmount?: (billId: string, amount: number) => void;
 }) {
+  // Use a stable key to prevent remounts - only change when bill ID changes
+  const stableBillId = useMemo(() => bill.id, [bill.id]);
+  
   // Initialize from bill prop only once - use lazy initializer
   const [localAmount, setLocalAmount] = useState<string>(() => bill.totalAmount?.toString() || "0");
   const isEditingRef = useRef<boolean>(false);
-  const billIdRef = useRef<string>(bill.id);
+  const billIdRef = useRef<string>(stableBillId);
   const lastSyncedAmountRef = useRef<number>(bill.totalAmount || 0);
   const savedAmountRef = useRef<number | null>(null);
+  const isInitialMountRef = useRef<boolean>(true);
   
   // Initialize refs on mount
   useEffect(() => {
-    billIdRef.current = bill.id;
-    lastSyncedAmountRef.current = bill.totalAmount || 0;
-  }, []); // Only run on mount
+    if (isInitialMountRef.current) {
+      billIdRef.current = stableBillId;
+      lastSyncedAmountRef.current = bill.totalAmount || 0;
+      isInitialMountRef.current = false;
+    }
+  }, [stableBillId]);
   
   // Only sync from props when bill ID changes (completely different bill)
   // NEVER sync when totalAmount changes - this causes the reset issue
   useEffect(() => {
+    // On initial mount, set the value from props
+    if (isInitialMountRef.current) {
+      const initialValue = bill.totalAmount?.toString() || "0";
+      setLocalAmount(initialValue);
+      return;
+    }
+    
     // Skip entirely if we're editing or if we just saved this amount
     if (isEditingRef.current || savedAmountRef.current !== null) {
+      console.log('[EditableAmountInput] Skipping sync - editing or just saved');
       return;
     }
     
     // Only update if bill ID changed (completely different bill)
-    if (billIdRef.current !== bill.id) {
-      billIdRef.current = bill.id;
+    if (billIdRef.current !== stableBillId) {
+      console.log('[EditableAmountInput] Bill ID changed, resetting');
+      billIdRef.current = stableBillId;
       lastSyncedAmountRef.current = bill.totalAmount || 0;
       setLocalAmount(bill.totalAmount?.toString() || "0");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bill.id]); // Intentionally ONLY depend on bill.id, NOT bill.totalAmount
+  }, [stableBillId]); // Intentionally ONLY depend on stableBillId, NOT bill.totalAmount
 
   const handleSave = async (value: string) => {
     console.log('[EditableAmountInput] handleSave called with value:', value);
@@ -144,24 +160,21 @@ function EditableAmountInput({
       <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
       <input
         ref={inputRef}
-        key={`amount-input-${bill.id}`}
+        key={`amount-input-${stableBillId}`}
         type="number"
         step="0.01"
         min="0"
-        defaultValue={bill.totalAmount?.toString() || "0"}
+        value={localAmount}
         onChange={(e) => {
           // CRITICAL: Set editing flag IMMEDIATELY
           e.stopPropagation();
+          e.preventDefault();
           isEditingRef.current = true;
           savedAmountRef.current = null; // Clear saved ref when user starts typing
           const newValue = e.target.value;
           console.log('[EditableAmountInput] onChange - newValue:', newValue);
-          // Update local state
+          // Update local state - use controlled input
           setLocalAmount(newValue);
-          // Also update input directly to ensure it stays
-          if (inputRef.current) {
-            inputRef.current.value = newValue;
-          }
         }}
         onFocus={(e) => {
           isEditingRef.current = true;
