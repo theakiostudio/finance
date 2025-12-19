@@ -55,9 +55,15 @@ function EditableAmountInput({
   const handleSave = async (value: string) => {
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
+    const finalAmountStr = finalAmount.toString();
     
     // Keep the value we just typed - don't let it get reset
-    setLocalAmount(finalAmount.toString());
+    setLocalAmount(finalAmountStr);
+    
+    // Immediately update the input element to preserve the value
+    if (inputRef.current) {
+      inputRef.current.value = finalAmountStr;
+    }
     
     // Track that we saved this amount to prevent sync from overwriting it
     savedAmountRef.current = finalAmount;
@@ -68,11 +74,21 @@ function EditableAmountInput({
       // Keep editing flag true during save
       isEditingRef.current = true;
       await onUpdateBillAmount(bill.id, finalAmount);
+      
+      // Ensure the value is still in the input after save completes
+      if (inputRef.current) {
+        inputRef.current.value = finalAmountStr;
+      }
+      
       // Clear saved ref after a delay to allow future syncs, but keep the value
       setTimeout(() => {
+        // Double-check the input still has the value
+        if (inputRef.current && inputRef.current.value !== finalAmountStr) {
+          inputRef.current.value = finalAmountStr;
+        }
         savedAmountRef.current = null;
         isEditingRef.current = false;
-      }, 1000); // Longer delay to ensure parent state updates complete
+      }, 1500); // Longer delay to ensure parent state updates complete
     } else {
       savedAmountRef.current = null;
       isEditingRef.current = false;
@@ -82,32 +98,47 @@ function EditableAmountInput({
   // Use a ref to track the input element and its value
   const inputRef = useRef<HTMLInputElement>(null);
   
-  // Update input value from state, but only when not editing
+  // Update input value from state, but only when not editing AND not just saved
   useEffect(() => {
-    if (!isEditingRef.current && inputRef.current) {
-      // Only update if the value actually changed and we're not editing
-      if (inputRef.current.value !== localAmount) {
-        inputRef.current.value = localAmount;
+    // Never update the input if we just saved or are editing
+    if (isEditingRef.current || savedAmountRef.current !== null) {
+      return;
+    }
+    
+    // Only update if the bill's totalAmount actually changed externally (not from our save)
+    const billAmount = bill.totalAmount || 0;
+    if (Math.abs(lastSyncedAmountRef.current - billAmount) > 0.01 && inputRef.current) {
+      const newValue = billAmount.toString();
+      if (inputRef.current.value !== newValue) {
+        inputRef.current.value = newValue;
+        setLocalAmount(newValue);
+        lastSyncedAmountRef.current = billAmount;
       }
     }
-  }, [localAmount]);
+  }, [bill.totalAmount]); // Only react to bill.totalAmount changes
 
   return (
     <div className="flex items-center gap-1">
       <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
       <input
         ref={inputRef}
+        key={`amount-input-${bill.id}`}
         type="number"
         step="0.01"
         min="0"
-        defaultValue={localAmount}
+        defaultValue={bill.totalAmount?.toString() || "0"}
         onChange={(e) => {
           // CRITICAL: Set editing flag IMMEDIATELY
           e.stopPropagation();
           isEditingRef.current = true;
+          savedAmountRef.current = null; // Clear saved ref when user starts typing
           const newValue = e.target.value;
           // Update local state
           setLocalAmount(newValue);
+          // Also update input directly to ensure it stays
+          if (inputRef.current) {
+            inputRef.current.value = newValue;
+          }
         }}
         onFocus={(e) => {
           isEditingRef.current = true;
@@ -115,7 +146,12 @@ function EditableAmountInput({
         }}
         onBlur={(e) => {
           // Save when user leaves the input
-          handleSave(e.target.value);
+          const value = e.target.value;
+          handleSave(value);
+          // Ensure the value stays in the input after save
+          if (inputRef.current && value) {
+            inputRef.current.value = value;
+          }
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
