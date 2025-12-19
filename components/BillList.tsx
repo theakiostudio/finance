@@ -79,8 +79,18 @@ function EditableAmountInput({
     }
   };
 
-  // Use a ref to track the input element to prevent unnecessary re-renders
+  // Use a ref to track the input element and its value
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Update input value from state, but only when not editing
+  useEffect(() => {
+    if (!isEditingRef.current && inputRef.current) {
+      // Only update if the value actually changed and we're not editing
+      if (inputRef.current.value !== localAmount) {
+        inputRef.current.value = localAmount;
+      }
+    }
+  }, [localAmount]);
 
   return (
     <div className="flex items-center gap-1">
@@ -90,26 +100,18 @@ function EditableAmountInput({
         type="number"
         step="0.01"
         min="0"
-        value={localAmount}
+        defaultValue={localAmount}
         onChange={(e) => {
-          // CRITICAL: Set editing flag IMMEDIATELY and update state
-          // This must happen synchronously to prevent any other updates
-          e.stopPropagation(); // Prevent event bubbling
-          e.preventDefault(); // Also prevent default
+          // CRITICAL: Set editing flag IMMEDIATELY
+          e.stopPropagation();
           isEditingRef.current = true;
           const newValue = e.target.value;
-          // Update state immediately - don't let anything interfere
+          // Update local state
           setLocalAmount(newValue);
         }}
         onFocus={(e) => {
-          // Set editing flag immediately on focus to block any prop updates
           isEditingRef.current = true;
-          savedAmountRef.current = null; // Clear saved ref on focus
-          // Keep current value - don't reset
-          const currentValue = e.target.value;
-          if (currentValue !== localAmount) {
-            setLocalAmount(currentValue);
-          }
+          savedAmountRef.current = null;
         }}
         onBlur={(e) => {
           // Save when user leaves the input
