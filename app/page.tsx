@@ -90,16 +90,8 @@ export default function Home() {
 
     await updateBill(updatedBill);
     
-    // Refresh from storage to ensure consistency
-    const allBills = await getBills();
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
-    const futureBills = allBills.filter(bill => {
-      const dueDate = parseISO(bill.dueDate);
-      dueDate.setHours(0, 0, 0, 0);
-      return dueDate >= todayDate;
-    });
-    setBills(futureBills);
+    // Don't refresh from storage - trust the local state update
+    // This prevents inputs from being reset
   };
 
   const handleEditBill = (bill: Bill) => {
@@ -132,16 +124,15 @@ export default function Home() {
       [person === "Ire" ? "irePaid" : "ebePaid"]: amount >= bill.totalAmount / 2,
     };
 
+    // Update local state immediately for better UX
+    setBills(prevBills => 
+      prevBills.map(b => b.id === billId ? updatedBill : b)
+    );
+
     await updateBill(updatedBill);
-    const allBills = await getBills();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const futureBills = allBills.filter(bill => {
-      const dueDate = parseISO(bill.dueDate);
-      dueDate.setHours(0, 0, 0, 0);
-      return dueDate >= today;
-    });
-    setBills(futureBills);
+    
+    // Don't refresh from storage - trust the local state update
+    // This prevents inputs from being reset
   };
 
   const handleUpdateBillAmount = async (billId: string, newAmount: number) => {

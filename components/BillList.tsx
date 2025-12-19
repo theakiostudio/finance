@@ -89,6 +89,7 @@ function EditableAmountInput({
         onChange={(e) => {
           // CRITICAL: Set editing flag IMMEDIATELY and update state
           // This must happen synchronously to prevent any other updates
+          e.stopPropagation(); // Prevent event bubbling
           isEditingRef.current = true;
           const newValue = e.target.value;
           setLocalAmount(newValue);
@@ -480,6 +481,7 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                         <button
                           onClick={async (e) => {
                             e.preventDefault();
+                            e.stopPropagation();
                             // Determine if we should set all to paid or unpaid
                             const shouldMarkPaid = !ebePaid;
                             // Update all bills in this month for Ebe
