@@ -143,14 +143,27 @@ function getDefaultBills(): Bill[] {
 
 export async function getBills(): Promise<Bill[]> {
   try {
-    return await fetchBills();
+    const bills = await fetchBills();
+    // Also save to localStorage as backup
+    if (typeof window !== "undefined" && bills.length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(bills));
+      } catch (e) {
+        console.error("Error saving to localStorage:", e);
+      }
+    }
+    return bills;
   } catch (error) {
-    console.error("Error loading bills:", error);
+    console.error("Error loading bills from API:", error);
     // Fallback to localStorage if API fails
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        try {
+          return JSON.parse(stored);
+        } catch (e) {
+          console.error("Error parsing localStorage:", e);
+        }
       }
     }
     return [];
@@ -203,20 +216,34 @@ export async function addBill(bill: Bill): Promise<void> {
 }
 
 export async function updateBill(updatedBill: Bill): Promise<void> {
-  try {
-    await updateBillAPI(updatedBill);
-  } catch (error) {
-    console.error("Error updating bill:", error);
-    // Fallback to localStorage
-    if (typeof window !== "undefined") {
+  // Always update localStorage immediately for persistence
+  if (typeof window !== "undefined") {
+    try {
       const stored = localStorage.getItem(STORAGE_KEY);
       const bills = stored ? JSON.parse(stored) : [];
       const index = bills.findIndex((b: Bill) => b.id === updatedBill.id);
       if (index !== -1) {
         bills[index] = updatedBill;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(bills));
+      } else {
+        bills.push(updatedBill);
       }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(bills));
+    } catch (e) {
+      console.error("Error updating localStorage:", e);
     }
+  }
+  
+  // Try to sync with API/database
+  try {
+    await updateBillAPI(updatedBill);
+    // If API succeeds, update localStorage with latest from server
+    const allBills = await fetchBills();
+    if (typeof window !== "undefined" && allBills.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(allBills));
+    }
+  } catch (error) {
+    console.error("Error updating bill on server:", error);
+    // localStorage already updated above, so data is persisted
   }
 }
 
