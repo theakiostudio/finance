@@ -144,10 +144,15 @@ function initializeDefaultBills(): Bill[] {
   return bills;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Check if status query parameter is requested
+    const { searchParams } = new URL(request.url);
+    const checkStatus = searchParams.get('status') === 'true';
+    
     // Try to fetch from database first
     let bills = await getBillsFromDB();
+    let dbStatus = 'connected';
     
     // If database is empty or unavailable, check if we need to initialize
     if (bills.length === 0) {
@@ -165,12 +170,26 @@ export async function GET() {
           await saveBillToDB(bill);
         }
         bills = defaultBills;
+        dbStatus = 'connected';
       } catch (dbError) {
         // Database not available, use in-memory storage
         console.log("Database not available, using in-memory storage");
+        dbStatus = 'not_connected';
         billsStorage = defaultBills;
         bills = defaultBills;
       }
+    }
+    
+    // If status check requested, return status info
+    if (checkStatus) {
+      return NextResponse.json({
+        status: dbStatus,
+        database: dbStatus === 'connected' ? 'available' : 'unavailable',
+        billsCount: bills.length,
+        message: dbStatus === 'connected' 
+          ? 'Database is working correctly!' 
+          : 'Database is not set up. Using localStorage fallback.'
+      });
     }
     
     return NextResponse.json(bills);
@@ -180,6 +199,18 @@ export async function GET() {
     if (billsStorage.length === 0) {
       billsStorage = initializeDefaultBills();
     }
+    
+    // Check if status was requested
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get('status') === 'true') {
+      return NextResponse.json({
+        status: 'error',
+        database: 'unavailable',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        message: 'Error checking database status'
+      });
+    }
+    
     return NextResponse.json(billsStorage);
   }
 }
