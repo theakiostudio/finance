@@ -22,124 +22,77 @@ const EditableAmountInput = memo(function EditableAmountInput({
   monthBills: Bill[]; 
   onUpdateBillAmount?: (billId: string, amount: number) => void;
 }) {
-  // Use a stable key to prevent remounts - only change when bill ID changes
-  const stableBillId = useMemo(() => bill.id, [bill.id]);
+  // Store initial bill ID and amount - these never change after mount
+  const initialBillIdRef = useRef<string>(bill.id);
+  const initialAmountRef = useRef<number>(bill.totalAmount || 0);
   
-  // Initialize from bill prop only once - use lazy initializer
-  const [localAmount, setLocalAmount] = useState<string>(() => bill.totalAmount?.toString() || "0");
+  // Local state that we control completely - never syncs from props
+  const [localAmount, setLocalAmount] = useState<string>(() => (bill.totalAmount || 0).toString());
+  
+  // Refs to track state
   const isEditingRef = useRef<boolean>(false);
-  const billIdRef = useRef<string>(stableBillId);
-  const lastSyncedAmountRef = useRef<number>(bill.totalAmount || 0);
-  const savedAmountRef = useRef<number | null>(null);
-  const isInitialMountRef = useRef<boolean>(true);
+  const lastSavedAmountRef = useRef<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
-  // Initialize refs on mount
+  // Only update if bill ID actually changed (different bill entirely)
   useEffect(() => {
-    if (isInitialMountRef.current) {
-      billIdRef.current = stableBillId;
-      lastSyncedAmountRef.current = bill.totalAmount || 0;
-      isInitialMountRef.current = false;
+    if (initialBillIdRef.current !== bill.id) {
+      // Completely different bill - reset everything
+      initialBillIdRef.current = bill.id;
+      initialAmountRef.current = bill.totalAmount || 0;
+      setLocalAmount((bill.totalAmount || 0).toString());
+      lastSavedAmountRef.current = null;
+      isEditingRef.current = false;
     }
-  }, [stableBillId]);
-  
-  // Only sync from props when bill ID changes (completely different bill)
-  // NEVER sync when totalAmount changes - this causes the reset issue
-  useEffect(() => {
-    // On initial mount, set the value from props
-    if (isInitialMountRef.current) {
-      const initialValue = bill.totalAmount?.toString() || "0";
-      setLocalAmount(initialValue);
-      return;
-    }
-    
-    // Skip entirely if we're editing or if we just saved this amount
-    if (isEditingRef.current || savedAmountRef.current !== null) {
-      return;
-    }
-    
-    // Only update if bill ID changed (completely different bill)
-    if (billIdRef.current !== stableBillId) {
-      billIdRef.current = stableBillId;
-      lastSyncedAmountRef.current = bill.totalAmount || 0;
-      setLocalAmount(bill.totalAmount?.toString() || "0");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stableBillId]); // Intentionally ONLY depend on stableBillId, NOT bill.totalAmount
+  }, [bill.id]);
 
-  const handleSave = async (value: string) => {
+  const handleSave = useCallback(async (value: string) => {
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
     const finalAmountStr = finalAmount.toString();
     
-    // Keep the value we just typed - don't let it get reset
+    // Immediately update local state
     setLocalAmount(finalAmountStr);
+    lastSavedAmountRef.current = finalAmount;
+    initialAmountRef.current = finalAmount;
     
-    // Track that we saved this amount to prevent sync from overwriting it
-    savedAmountRef.current = finalAmount;
-    lastSyncedAmountRef.current = finalAmount;
-    
-    // Update the first bill in the month - handleUpdateBillAmount will update all bills in the same month
+    // Update the bills
     if (onUpdateBillAmount && bill) {
-      // Keep editing flag true during save
       isEditingRef.current = true;
       await onUpdateBillAmount(bill.id, finalAmount);
-      
-      // Ensure local state has the correct value after save
+      // Keep the value in state - don't let anything reset it
       setLocalAmount(finalAmountStr);
-      
-      // Keep the saved ref for longer to prevent any sync attempts
-      // Never clear it - this prevents any prop updates from resetting the value
-      // The value will persist until user starts typing again
+      // Mark as not editing after a delay
       setTimeout(() => {
         isEditingRef.current = false;
-        // Don't clear savedAmountRef - keep it to prevent resets
-      }, 2000);
-    } else {
-      savedAmountRef.current = null;
-      isEditingRef.current = false;
+      }, 100);
     }
-  };
-
-  // Use a ref to track the input element and its value
-  const inputRef = useRef<HTMLInputElement>(null);
-  
-  // REMOVED: useEffect that syncs from bill.totalAmount
-  // This was causing resets in production. We only sync on bill ID change now.
+  }, [bill.id, onUpdateBillAmount]);
 
   return (
     <div className="flex items-center gap-1">
       <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
       <input
         ref={inputRef}
-        key={`amount-input-${stableBillId}`}
         type="number"
         step="0.01"
         min="0"
         value={localAmount}
         onChange={(e) => {
-          // CRITICAL: Set editing flag IMMEDIATELY
-          e.stopPropagation();
-          isEditingRef.current = true;
-          savedAmountRef.current = null; // Clear saved ref when user starts typing
           const newValue = e.target.value;
-          // Update local state - use controlled input
+          isEditingRef.current = true;
+          lastSavedAmountRef.current = null;
           setLocalAmount(newValue);
         }}
-        onFocus={(e) => {
+        onFocus={() => {
           isEditingRef.current = true;
-          savedAmountRef.current = null;
         }}
         onBlur={(e) => {
-          // Save when user leaves the input
-          const value = e.target.value;
-          handleSave(value);
-          // Ensure the value stays in the input after save
-          if (inputRef.current && value) {
-            inputRef.current.value = value;
-          }
+          handleSave(e.target.value);
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
+            e.preventDefault();
             const target = e.target as HTMLInputElement;
             handleSave(target.value);
             target.blur();
@@ -150,10 +103,9 @@ const EditableAmountInput = memo(function EditableAmountInput({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Only re-render if bill ID changes or totalAmount changes when we haven't edited
-  // This prevents unnecessary re-renders when parent updates
-  return prevProps.bill.id === nextProps.bill.id && 
-         prevProps.bill.totalAmount === nextProps.bill.totalAmount;
+  // Always return true to prevent re-renders from prop changes
+  // Only re-render if bill ID changes (handled by useEffect)
+  return prevProps.bill.id === nextProps.bill.id;
 });
 
 export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmount, onUpdateBillAmount }: BillListProps) {
