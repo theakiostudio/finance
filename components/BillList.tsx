@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Bill, Person } from "@/types/expense";
 import { format, parseISO } from "date-fns";
 import { isBillOverdue } from "@/utils/balance";
@@ -11,6 +11,73 @@ interface BillListProps {
   onEdit: (bill: Bill) => void;
   onUpdateAmount?: (billId: string, person: Person, amount: number) => void;
   onUpdateBillAmount?: (billId: string, amount: number) => void;
+}
+
+// Uncontrolled input component for bill amounts - uses refs to prevent React re-render issues
+function EditableAmountInput({ 
+  bill, 
+  monthBills, 
+  onUpdateBillAmount 
+}: { 
+  bill: Bill; 
+  monthBills: Bill[]; 
+  onUpdateBillAmount?: (billId: string, amount: number) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const billIdRef = useRef<string>(bill.id);
+  const isInitializedRef = useRef<boolean>(false);
+
+  // Only initialize value once when bill ID changes (different bill)
+  useEffect(() => {
+    if (billIdRef.current !== bill.id) {
+      billIdRef.current = bill.id;
+      isInitializedRef.current = false;
+    }
+    
+    // Set initial value only once per bill
+    if (!isInitializedRef.current && inputRef.current) {
+      const displayValue = bill.totalAmount === 0 ? "" : bill.totalAmount.toString();
+      inputRef.current.value = displayValue;
+      isInitializedRef.current = true;
+    }
+  }, [bill.id, bill.totalAmount]);
+
+  const handleSave = (value: string) => {
+    const trimmedValue = value.trim();
+    const numValue = parseFloat(trimmedValue);
+    const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
+    
+    // Update all bills in the same month with the same name
+    if (onUpdateBillAmount && bill) {
+      onUpdateBillAmount(bill.id, finalAmount);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
+      <input
+        ref={inputRef}
+        type="number"
+        step="0.01"
+        min="0"
+        defaultValue={bill.totalAmount === 0 ? "" : bill.totalAmount.toString()}
+        onBlur={(e) => {
+          handleSave(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const target = e.target as HTMLInputElement;
+            handleSave(target.value);
+            target.blur();
+          }
+        }}
+        placeholder="0.00"
+        className="w-24 px-2 py-1 text-sm border-2 border-purple-300 dark:border-purple-600 rounded dark:bg-gray-700 dark:text-white font-medium text-gray-700 dark:text-gray-300 focus:border-purple-500 focus:outline-none"
+      />
+    </div>
+  );
 }
 
 export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmount, onUpdateBillAmount }: BillListProps) {
@@ -130,10 +197,14 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
     const totalAmount = nextMonthBills.reduce((sum, bill) => sum + bill.totalAmount, 0);
     const totalCount = nextMonthBills.length;
     
-    // Calculate countdown to earliest due date (skip for Water)
+    // Check if this is a flexible amount bill type
+    const isFlexibleAmount = billType === "Water" || billType === "Electricity" || billType === "Credit Card Pot";
+    const isCreditCardPot = billType === "Credit Card Pot";
+    
+    // Calculate countdown to earliest due date (skip for Water and Credit Card Pot)
     const isWater = billType === "Water";
     let countdownText = "";
-    if (!isWater && nextMonthBills.length > 0) {
+    if (!isWater && !isCreditCardPot && nextMonthBills.length > 0) {
       const earliestBill = nextMonthBills.reduce((earliest, bill) => {
         const billDate = parseISO(bill.dueDate).getTime();
         const earliestDate = parseISO(earliest.dueDate).getTime();
@@ -172,6 +243,11 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
             <span className="font-semibold text-gray-900 dark:text-white">
               {billType}
             </span>
+            {isFlexibleAmount && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-full">
+                No fixed amount
+              </span>
+            )}
             {countdownText && (
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {countdownText}
@@ -179,9 +255,20 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
             )}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              £{totalAmount.toFixed(2)}
-            </span>
+            {isCreditCardPot && nextMonthBills.length > 0 ? (
+              <div className="text-right">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block">
+                  £{((nextMonthBills[0].ebePaidAmount || 0) + (nextMonthBills[0].irePaidAmount || 0)).toFixed(2)} / £{totalAmount.toFixed(2)}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {totalAmount > 0 ? ((((nextMonthBills[0].ebePaidAmount || 0) + (nextMonthBills[0].irePaidAmount || 0)) / totalAmount) * 100).toFixed(0) : "0"}%
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                £{totalAmount.toFixed(2)}
+              </span>
+            )}
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {isOpen ? '▼' : '▶'}
             </span>
@@ -191,6 +278,17 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
           <div className="p-3 space-y-3 bg-gray-50 dark:bg-gray-900">
             {Object.keys(monthlyGroups).sort().map((monthKey) => {
               const monthBills = monthlyGroups[monthKey];
+              const isCreditCardPotMonth = billType === "Credit Card Pot";
+              const isFlexibleAmountMonth = billType === "Water" || billType === "Electricity";
+              
+              // For Credit Card Pot, use the single bill
+              const creditCardBill = isCreditCardPotMonth ? monthBills[0] : null;
+              const ebePaidAmount = creditCardBill?.ebePaidAmount || 0;
+              const irePaidAmount = creditCardBill?.irePaidAmount || 0;
+              const totalPaid = ebePaidAmount + irePaidAmount;
+              
+              // For flexible amount bills (Water/Electricity), use the first bill
+              const flexibleBill = isFlexibleAmountMonth ? monthBills[0] : null;
               
               // Recalculate monthTotal from current bills (in case amount was updated)
               const monthTotal = monthBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
@@ -254,12 +352,95 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                         </span>
                       )}
                     </div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      £{monthTotal.toFixed(2)}
-                    </span>
+                    {isFlexibleAmountMonth && flexibleBill ? (
+                      <EditableAmountInput
+                        key={`editable-amount-${flexibleBill.id}`}
+                        bill={flexibleBill}
+                        monthBills={monthBills}
+                        onUpdateBillAmount={onUpdateBillAmount}
+                      />
+                    ) : (
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        £{monthTotal.toFixed(2)}
+                      </span>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  {isCreditCardPotMonth ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Credit Card Pot - Amount Input for Ebe */}
+                      <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Ebe Paid</p>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            defaultValue={ebePaidAmount || ""}
+                            onBlur={(e) => {
+                              const amount = parseFloat(e.target.value) || 0;
+                              if (creditCardBill && onUpdateAmount) {
+                                onUpdateAmount(creditCardBill.id, "Ebe", amount);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const target = e.target as HTMLInputElement;
+                                const amount = parseFloat(target.value) || 0;
+                                if (creditCardBill && onUpdateAmount) {
+                                  onUpdateAmount(creditCardBill.id, "Ebe", amount);
+                                }
+                                target.blur();
+                              }
+                            }}
+                            className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Credit Card Pot - Amount Input for Ire */}
+                      <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Ire Paid</p>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            defaultValue={irePaidAmount || ""}
+                            onBlur={(e) => {
+                              const amount = parseFloat(e.target.value) || 0;
+                              if (creditCardBill && onUpdateAmount) {
+                                onUpdateAmount(creditCardBill.id, "Ire", amount);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const target = e.target as HTMLInputElement;
+                                const amount = parseFloat(target.value) || 0;
+                                if (creditCardBill && onUpdateAmount) {
+                                  onUpdateAmount(creditCardBill.id, "Ire", amount);
+                                }
+                                target.blur();
+                              }
+                            }}
+                            className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      <div className="col-span-2 mt-2 p-2 bg-purple-50 dark:bg-purple-900/20 rounded border border-purple-200 dark:border-purple-800">
+                        <p className="text-xs text-purple-800 dark:text-purple-200">
+                          Total Paid: £{totalPaid.toFixed(2)} / £{monthTotal.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
                       {/* Ebe Payment */}
                       <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
                         <div className="flex-1">
@@ -350,6 +531,7 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                         </button>
                       </div>
                     </div>
+                  )}
                 </div>
               );
             })}
