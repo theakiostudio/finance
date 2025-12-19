@@ -6,17 +6,24 @@ try {
   const postgres = require('@vercel/postgres');
   
   // Check if database environment variables are set
-  // Using the specific variable names from Vercel: db_POSTGRES_URL and db_PRISMA_DATABASE_URL
-  // Map them to the standard names that @vercel/postgres expects
-  if (process.env.db_POSTGRES_URL && !process.env.POSTGRES_URL) {
-    process.env.POSTGRES_URL = process.env.db_POSTGRES_URL;
+  // Handle multiple naming conventions:
+  // - Standard: POSTGRES_URL, POSTGRES_PRISMA_URL (set automatically by Vercel when linking database)
+  // - Custom: db_POSTGRES_URL, db_PRISMA_DATABASE_URL, db_DATABASE_URL (manually added)
+  
+  // Map custom names to standard names that @vercel/postgres expects
+  const postgresUrl = process.env.POSTGRES_URL || process.env.db_POSTGRES_URL || process.env.db_DATABASE_URL;
+  const prismaUrl = process.env.POSTGRES_PRISMA_URL || process.env.db_PRISMA_DATABASE_URL;
+  
+  if (postgresUrl && !process.env.POSTGRES_URL) {
+    process.env.POSTGRES_URL = postgresUrl;
   }
-  if (process.env.db_PRISMA_DATABASE_URL && !process.env.POSTGRES_PRISMA_URL) {
-    process.env.POSTGRES_PRISMA_URL = process.env.db_PRISMA_DATABASE_URL;
+  if (prismaUrl && !process.env.POSTGRES_PRISMA_URL) {
+    process.env.POSTGRES_PRISMA_URL = prismaUrl;
   }
   
   if (!process.env.POSTGRES_URL && !process.env.POSTGRES_PRISMA_URL) {
     console.log('Database package available but no connection string found. Using fallback storage.');
+    console.log('Available env vars:', Object.keys(process.env).filter(k => k.includes('POSTGRES') || k.includes('DATABASE')).join(', '));
     sql = null;
   } else {
     sql = postgres.sql;
