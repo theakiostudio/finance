@@ -26,13 +26,20 @@ const EditableAmountInput = memo(function EditableAmountInput({
   const initialBillIdRef = useRef<string>(bill.id);
   const initialAmountRef = useRef<number>(bill.totalAmount || 0);
   
+  // Helper to format amount for display - show empty if 0, otherwise show the value
+  const formatAmountForDisplay = (amount: number): string => {
+    return amount === 0 ? "" : amount.toString();
+  };
+  
   // Local state that we control completely - never syncs from props
-  const [localAmount, setLocalAmount] = useState<string>(() => (bill.totalAmount || 0).toString());
+  // Show empty string if amount is 0, otherwise show the value
+  const [localAmount, setLocalAmount] = useState<string>(() => formatAmountForDisplay(bill.totalAmount || 0));
   
   // Refs to track state
   const isEditingRef = useRef<boolean>(false);
   const lastSavedAmountRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasUserInputRef = useRef<boolean>(false);
   
   // Only update if bill ID actually changed (different bill entirely)
   useEffect(() => {
@@ -40,32 +47,37 @@ const EditableAmountInput = memo(function EditableAmountInput({
       // Completely different bill - reset everything
       initialBillIdRef.current = bill.id;
       initialAmountRef.current = bill.totalAmount || 0;
-      setLocalAmount((bill.totalAmount || 0).toString());
+      setLocalAmount(formatAmountForDisplay(bill.totalAmount || 0));
       lastSavedAmountRef.current = null;
       isEditingRef.current = false;
+      hasUserInputRef.current = false;
     }
   }, [bill.id]);
 
   const handleSave = useCallback(async (value: string) => {
-    const numValue = parseFloat(value);
+    const trimmedValue = value.trim();
+    const numValue = parseFloat(trimmedValue);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
-    const finalAmountStr = finalAmount.toString();
     
-    // Immediately update local state
+    // Format for display - empty if 0, otherwise show the value
+    const finalAmountStr = finalAmount === 0 ? "" : finalAmount.toString();
+    
+    // Immediately update local state - this is what the user sees
     setLocalAmount(finalAmountStr);
     lastSavedAmountRef.current = finalAmount;
     initialAmountRef.current = finalAmount;
+    hasUserInputRef.current = true;
     
     // Update the bills
     if (onUpdateBillAmount && bill) {
       isEditingRef.current = true;
       await onUpdateBillAmount(bill.id, finalAmount);
-      // Keep the value in state - don't let anything reset it
+      // CRITICAL: Keep the value in state after save - don't let anything reset it
       setLocalAmount(finalAmountStr);
       // Mark as not editing after a delay
       setTimeout(() => {
         isEditingRef.current = false;
-      }, 100);
+      }, 200);
     }
   }, [bill.id, onUpdateBillAmount]);
 
@@ -81,23 +93,39 @@ const EditableAmountInput = memo(function EditableAmountInput({
         onChange={(e) => {
           const newValue = e.target.value;
           isEditingRef.current = true;
-          lastSavedAmountRef.current = null;
+          hasUserInputRef.current = true;
+          // Update state immediately - this is what user sees
           setLocalAmount(newValue);
         }}
         onFocus={() => {
           isEditingRef.current = true;
         }}
         onBlur={(e) => {
-          handleSave(e.target.value);
+          const value = e.target.value;
+          handleSave(value);
+          // Ensure the value stays visible after blur
+          if (value.trim()) {
+            const numValue = parseFloat(value);
+            const displayValue = numValue === 0 ? "" : numValue.toString();
+            setLocalAmount(displayValue);
+          }
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
             const target = e.target as HTMLInputElement;
-            handleSave(target.value);
+            const value = target.value;
+            handleSave(value);
+            // Ensure value stays after Enter
+            if (value.trim()) {
+              const numValue = parseFloat(value);
+              const displayValue = numValue === 0 ? "" : numValue.toString();
+              setLocalAmount(displayValue);
+            }
             target.blur();
           }
         }}
+        placeholder="0.00"
         className="w-24 px-2 py-1 text-sm border-2 border-purple-300 dark:border-purple-600 rounded dark:bg-gray-700 dark:text-white font-medium text-gray-700 dark:text-gray-300 focus:border-purple-500 focus:outline-none"
       />
     </div>
