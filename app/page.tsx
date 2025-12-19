@@ -71,27 +71,28 @@ export default function Home() {
   }, []);
 
   const handleTogglePayment = async (billId: string, person: Person) => {
-    const bill = bills.find(b => b.id === billId);
-    if (!bill) return;
+    // Use functional update to get latest state - prevents stale closures
+    setBills(prevBills => {
+      const bill = prevBills.find(b => b.id === billId);
+      if (!bill) return prevBills;
 
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-    const newPaidStatus = !bill[person === "Ire" ? "irePaid" : "ebePaid"];
-    
-    const updatedBill: Bill = {
-      ...bill,
-      [person === "Ire" ? "irePaid" : "ebePaid"]: newPaidStatus,
-      [person === "Ire" ? "irePaidDate" : "ebePaidDate"]: newPaidStatus ? todayStr : null,
-    };
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const newPaidStatus = !bill[person === "Ire" ? "irePaid" : "ebePaid"];
+      
+      const updatedBill: Bill = {
+        ...bill,
+        [person === "Ire" ? "irePaid" : "ebePaid"]: newPaidStatus,
+        [person === "Ire" ? "irePaidDate" : "ebePaidDate"]: newPaidStatus ? todayStr : null,
+      };
 
-    // Update local state immediately for better UX
-    setBills(prevBills => 
-      prevBills.map(b => b.id === billId ? updatedBill : b)
-    );
+      // Update the bill asynchronously - don't await here
+      updateBill(updatedBill).catch(error => {
+        console.error("Error updating bill:", error);
+        // Revert on error - could add error handling here if needed
+      });
 
-    await updateBill(updatedBill);
-    
-    // Don't refresh from storage - trust the local state update
-    // This prevents inputs from being reset
+      return prevBills.map(b => b.id === billId ? updatedBill : b);
+    });
   };
 
   const handleEditBill = (bill: Bill) => {

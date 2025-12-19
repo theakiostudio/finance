@@ -9,9 +9,11 @@ interface BillListProps {
   bills: Bill[];
   onTogglePayment: (billId: string, person: Person) => void;
   onEdit: (bill: Bill) => void;
+  onUpdateAmount?: (billId: string, person: Person, amount: number) => void;
+  onUpdateBillAmount?: (billId: string, amount: number) => void;
 }
 
-export default function BillList({ bills, onTogglePayment, onEdit }: BillListProps) {
+export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmount, onUpdateBillAmount }: BillListProps) {
   const [openTabs, setOpenTabs] = useState<Record<string, boolean>>({
     "Rent": false,
     "Council Tax": false,
@@ -277,17 +279,18 @@ export default function BillList({ bills, onTogglePayment, onEdit }: BillListPro
                           )}
                         </div>
                         <button
-                          onClick={async (e) => {
+                          type="button"
+                          onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             // Determine if we should set all to paid or unpaid
                             const shouldMarkPaid = !ebePaid;
                             // Update all bills in this month for Ebe
-                            for (const bill of monthBills) {
+                            monthBills.forEach((bill) => {
                               if (bill.ebePaid !== shouldMarkPaid) {
-                                await onTogglePayment(bill.id, "Ebe");
+                                onTogglePayment(bill.id, "Ebe");
                               }
-                            }
+                            });
                           }}
                           className={`w-8 h-8 rounded border-2 flex items-center justify-center transition-colors text-sm ${
                             ebePaid
@@ -321,16 +324,18 @@ export default function BillList({ bills, onTogglePayment, onEdit }: BillListPro
                           )}
                         </div>
                         <button
-                          onClick={async (e) => {
+                          type="button"
+                          onClick={(e) => {
                             e.preventDefault();
+                            e.stopPropagation();
                             // Determine if we should set all to paid or unpaid
                             const shouldMarkPaid = !irePaid;
                             // Update all bills in this month for Ire
-                            for (const bill of monthBills) {
+                            monthBills.forEach((bill) => {
                               if (bill.irePaid !== shouldMarkPaid) {
-                                await onTogglePayment(bill.id, "Ire");
+                                onTogglePayment(bill.id, "Ire");
                               }
-                            }
+                            });
                           }}
                           className={`w-8 h-8 rounded border-2 flex items-center justify-center transition-colors text-sm ${
                             irePaid
