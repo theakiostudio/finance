@@ -21,6 +21,40 @@ export function getNextMonthBills(bills: Bill[]): Bill[] {
   });
 }
 
+export function getCurrentAndNextMonthNames(bills: Bill[]): { current: string; next: string | null } | null {
+  if (bills.length === 0) return null;
+  
+  // Find the earliest due date (current payment month)
+  const earliestDate = bills.reduce((earliest, bill) => {
+    const billDate = parseISO(bill.dueDate);
+    return billDate < earliest ? billDate : earliest;
+  }, parseISO(bills[0].dueDate));
+  
+  const currentMonth = format(startOfMonth(earliestDate), "MMMM");
+  
+  // Find the next month's bills
+  const sortedBills = [...bills].sort((a, b) => 
+    parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime()
+  );
+  
+  // Find the first bill that's not in the current month
+  const nextMonthBill = sortedBills.find(bill => {
+    const billDate = parseISO(bill.dueDate);
+    const billMonth = startOfMonth(billDate);
+    const currentMonthStart = startOfMonth(earliestDate);
+    return billMonth.getTime() > currentMonthStart.getTime();
+  });
+  
+  const nextMonth = nextMonthBill 
+    ? format(startOfMonth(parseISO(nextMonthBill.dueDate)), "MMMM")
+    : null;
+  
+  return {
+    current: currentMonth,
+    next: nextMonth,
+  };
+}
+
 export function calculateBillSummary(bills: Bill[]): BillSummary {
   // Only calculate summary for the next month's bills
   const nextMonthBills = getNextMonthBills(bills);

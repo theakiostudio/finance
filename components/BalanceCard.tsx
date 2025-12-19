@@ -4,13 +4,23 @@ import { BillSummary } from "@/types/expense";
 
 interface BalanceCardProps {
   summary: BillSummary;
+  currentMonth?: string | null;
+  nextMonth?: string | null;
 }
 
-export default function BalanceCard({ summary }: BalanceCardProps) {
+export default function BalanceCard({ summary, currentMonth, nextMonth }: BalanceCardProps) {
   return (
     <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-md p-4 text-white">
       <h2 className="text-lg font-bold mb-1">Summary</h2>
-      <p className="text-xs text-purple-100 mb-3">Next Payment</p>
+      {currentMonth && (
+        <p className="text-xs text-purple-100 mb-1">Payment: {currentMonth}</p>
+      )}
+      {nextMonth && (
+        <p className="text-xs text-purple-100 mb-3">Next Payment: {nextMonth}</p>
+      )}
+      {!currentMonth && (
+        <p className="text-xs text-purple-100 mb-3">Next Payment</p>
+      )}
       
       <div className="space-y-2 mb-3 text-sm">
         <div className="flex justify-between">

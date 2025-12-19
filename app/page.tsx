@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Bill, Person } from "@/types/expense";
 import { getBills, updateBill, resetBills } from "@/utils/storage";
 import { fetchBills } from "@/utils/api";
-import { calculateBillSummary } from "@/utils/balance";
+import { calculateBillSummary, getCurrentAndNextMonthNames } from "@/utils/balance";
 import BillList from "@/components/BillList";
 import BalanceCard from "@/components/BalanceCard";
 import EditBillModal from "@/components/EditBillModal";
@@ -180,6 +180,7 @@ export default function Home() {
 
 
   const summary = calculateBillSummary(bills);
+  const monthNames = getCurrentAndNextMonthNames(bills);
 
   if (!mounted) {
     return (
@@ -201,7 +202,11 @@ export default function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
           <div className="lg:col-span-1">
-            <BalanceCard summary={summary} />
+            <BalanceCard 
+              summary={summary} 
+              currentMonth={monthNames?.current}
+              nextMonth={monthNames?.next}
+            />
           </div>
           <div className="lg:col-span-3">
             <BillList 
