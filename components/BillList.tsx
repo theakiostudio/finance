@@ -26,15 +26,23 @@ function EditableAmountInput({
   const [localAmount, setLocalAmount] = useState<string>(() => bill.totalAmount?.toString() || "0");
   const isEditingRef = useRef<boolean>(false);
   const billIdRef = useRef<string>(bill.id);
-  const lastSyncedAmountRef = useRef<number>(bill.totalAmount || 0);
+  const initialAmountRef = useRef<number>(bill.totalAmount || 0);
+  const hasInitializedRef = useRef<boolean>(false);
+  
+  // Initialize once on mount
+  if (!hasInitializedRef.current) {
+    hasInitializedRef.current = true;
+    initialAmountRef.current = bill.totalAmount || 0;
+  }
   
   // Only sync from props when bill ID actually changes (different bill)
-  // Do NOT sync when totalAmount changes to prevent resetting while typing
+  // CRITICAL: Do NOT sync when totalAmount changes to prevent resetting while typing
   useEffect(() => {
     if (billIdRef.current !== bill.id) {
-      // This is a completely different bill
+      // This is a completely different bill - reset everything
       billIdRef.current = bill.id;
-      lastSyncedAmountRef.current = bill.totalAmount || 0;
+      initialAmountRef.current = bill.totalAmount || 0;
+      hasInitializedRef.current = true;
       // Only update if not currently editing
       if (!isEditingRef.current) {
         setLocalAmount(bill.totalAmount?.toString() || "0");
@@ -46,42 +54,50 @@ function EditableAmountInput({
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
     
-    // Keep the value we just typed in the input
+    // Keep the value we just typed in the input - don't let it get reset
     setLocalAmount(finalAmount.toString());
     
-    // Update our refs AFTER setting local state
-    lastSyncedAmountRef.current = finalAmount;
+    // Update our ref to track the saved amount
+    initialAmountRef.current = finalAmount;
     
     // Update the first bill in the month - handleUpdateBillAmount will update all bills in the same month
     if (onUpdateBillAmount && bill) {
+      // Mark as editing during the save to prevent any resets
+      isEditingRef.current = true;
       await onUpdateBillAmount(bill.id, finalAmount);
-      // Mark as no longer editing after save completes
+      // Mark as no longer editing after save completes, but keep the value
       setTimeout(() => {
         isEditingRef.current = false;
-      }, 100);
+      }, 500);
     } else {
       isEditingRef.current = false;
     }
   };
 
+  // Use a ref to track the input element to prevent unnecessary re-renders
+  const inputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="flex items-center gap-1">
       <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
       <input
-        key={`amount-input-${bill.id}`}
+        ref={inputRef}
         type="number"
         step="0.01"
         min="0"
         value={localAmount}
         onChange={(e) => {
-          // Set editing flag BEFORE updating state to prevent useEffect from interfering
+          // CRITICAL: Set editing flag IMMEDIATELY and update state
+          // This must happen synchronously to prevent any other updates
           isEditingRef.current = true;
           const newValue = e.target.value;
           setLocalAmount(newValue);
         }}
-        onFocus={() => {
+        onFocus={(e) => {
           // Set editing flag immediately on focus to block any prop updates
           isEditingRef.current = true;
+          // Ensure the current value is preserved
+          setLocalAmount(e.target.value);
         }}
         onBlur={(e) => {
           // Save when user leaves the input
@@ -378,6 +394,7 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                     </div>
                     {isFlexibleAmount && flexibleBill ? (
                       <EditableAmountInput
+                        key={`editable-amount-${flexibleBill.id}`}
                         bill={flexibleBill}
                         monthBills={monthBills}
                         onUpdateBillAmount={onUpdateBillAmount}
