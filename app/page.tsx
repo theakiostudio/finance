@@ -113,69 +113,6 @@ export default function Home() {
     setEditingBill(null);
   };
 
-  const handleUpdateAmount = async (billId: string, person: Person, amount: number) => {
-    const bill = bills.find(b => b.id === billId);
-    if (!bill) return;
-
-    const updatedBill: Bill = {
-      ...bill,
-      [person === "Ire" ? "irePaidAmount" : "ebePaidAmount"]: amount,
-      // Auto-mark as paid if amount >= half of total
-      [person === "Ire" ? "irePaid" : "ebePaid"]: amount >= bill.totalAmount / 2,
-    };
-
-    // Update local state immediately for better UX
-    setBills(prevBills => 
-      prevBills.map(b => b.id === billId ? updatedBill : b)
-    );
-
-    await updateBill(updatedBill);
-    
-    // Don't refresh from storage - trust the local state update
-    // This prevents inputs from being reset
-  };
-
-  const handleUpdateBillAmount = async (billId: string, newAmount: number) => {
-    const bill = bills.find(b => b.id === billId);
-    if (!bill) return;
-
-    const finalAmount = Math.max(0, newAmount);
-    
-    // Update ALL bills with the same name and month (for Electricity, Water, etc.)
-    const billDate = parseISO(bill.dueDate);
-    const billMonth = billDate.getMonth();
-    const billYear = billDate.getFullYear();
-    const billName = bill.name;
-
-    // Find all bills in the same month with the same name
-    const billsToUpdate = bills.filter(b => {
-      if (b.name !== billName) return false;
-      const bDate = parseISO(b.dueDate);
-      return bDate.getMonth() === billMonth && bDate.getFullYear() === billYear;
-    });
-
-    // Update all matching bills
-    const updatedBills = billsToUpdate.map(b => ({
-      ...b,
-      totalAmount: finalAmount,
-    }));
-
-    // Update local state immediately for better UX
-    setBills(prevBills => 
-      prevBills.map(b => {
-        const updated = updatedBills.find(ub => ub.id === b.id);
-        return updated || b;
-      })
-    );
-    
-    // Save all updated bills
-    for (const updatedBill of updatedBills) {
-      await updateBill(updatedBill);
-    }
-    
-    // Don't refresh from storage immediately - let the local state update persist
-    // This prevents the input from resetting while the user is typing
-  };
 
   const summary = calculateBillSummary(bills);
 
@@ -206,8 +143,6 @@ export default function Home() {
               bills={bills} 
               onTogglePayment={handleTogglePayment} 
               onEdit={handleEditBill}
-              onUpdateAmount={handleUpdateAmount}
-              onUpdateBillAmount={handleUpdateBillAmount}
             />
           </div>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import { useState } from "react";
 import { Bill, Person } from "@/types/expense";
 import { format, parseISO } from "date-fns";
 import { isBillOverdue } from "@/utils/balance";
@@ -9,134 +9,9 @@ interface BillListProps {
   bills: Bill[];
   onTogglePayment: (billId: string, person: Person) => void;
   onEdit: (bill: Bill) => void;
-  onUpdateAmount?: (billId: string, person: Person, amount: number) => void;
-  onUpdateBillAmount?: (billId: string, amount: number) => void;
 }
 
-const EditableAmountInput = memo(function EditableAmountInput({ 
-  bill, 
-  monthBills, 
-  onUpdateBillAmount 
-}: { 
-  bill: Bill; 
-  monthBills: Bill[]; 
-  onUpdateBillAmount?: (billId: string, amount: number) => void;
-}) {
-  // Store initial bill ID and amount - these never change after mount
-  const initialBillIdRef = useRef<string>(bill.id);
-  const initialAmountRef = useRef<number>(bill.totalAmount || 0);
-  
-  // Helper to format amount for display - show empty if 0, otherwise show the value
-  const formatAmountForDisplay = (amount: number): string => {
-    return amount === 0 ? "" : amount.toString();
-  };
-  
-  // Local state that we control completely - never syncs from props
-  // Show empty string if amount is 0, otherwise show the value
-  const [localAmount, setLocalAmount] = useState<string>(() => formatAmountForDisplay(bill.totalAmount || 0));
-  
-  // Refs to track state
-  const isEditingRef = useRef<boolean>(false);
-  const lastSavedAmountRef = useRef<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const hasUserInputRef = useRef<boolean>(false);
-  
-  // Only update if bill ID actually changed (different bill entirely)
-  useEffect(() => {
-    if (initialBillIdRef.current !== bill.id) {
-      // Completely different bill - reset everything
-      initialBillIdRef.current = bill.id;
-      initialAmountRef.current = bill.totalAmount || 0;
-      setLocalAmount(formatAmountForDisplay(bill.totalAmount || 0));
-      lastSavedAmountRef.current = null;
-      isEditingRef.current = false;
-      hasUserInputRef.current = false;
-    }
-  }, [bill.id]);
-
-  const handleSave = useCallback(async (value: string) => {
-    const trimmedValue = value.trim();
-    const numValue = parseFloat(trimmedValue);
-    const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
-    
-    // Format for display - empty if 0, otherwise show the value
-    const finalAmountStr = finalAmount === 0 ? "" : finalAmount.toString();
-    
-    // Immediately update local state - this is what the user sees
-    setLocalAmount(finalAmountStr);
-    lastSavedAmountRef.current = finalAmount;
-    initialAmountRef.current = finalAmount;
-    hasUserInputRef.current = true;
-    
-    // Update the bills
-    if (onUpdateBillAmount && bill) {
-      isEditingRef.current = true;
-      await onUpdateBillAmount(bill.id, finalAmount);
-      // CRITICAL: Keep the value in state after save - don't let anything reset it
-      setLocalAmount(finalAmountStr);
-      // Mark as not editing after a delay
-      setTimeout(() => {
-        isEditingRef.current = false;
-      }, 200);
-    }
-  }, [bill.id, onUpdateBillAmount]);
-
-  return (
-    <div className="flex items-center gap-1">
-      <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
-      <input
-        ref={inputRef}
-        type="number"
-        step="0.01"
-        min="0"
-        value={localAmount}
-        onChange={(e) => {
-          const newValue = e.target.value;
-          isEditingRef.current = true;
-          hasUserInputRef.current = true;
-          // Update state immediately - this is what user sees
-          setLocalAmount(newValue);
-        }}
-        onFocus={() => {
-          isEditingRef.current = true;
-        }}
-        onBlur={(e) => {
-          const value = e.target.value;
-          handleSave(value);
-          // Ensure the value stays visible after blur
-          if (value.trim()) {
-            const numValue = parseFloat(value);
-            const displayValue = numValue === 0 ? "" : numValue.toString();
-            setLocalAmount(displayValue);
-          }
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            const target = e.target as HTMLInputElement;
-            const value = target.value;
-            handleSave(value);
-            // Ensure value stays after Enter
-            if (value.trim()) {
-              const numValue = parseFloat(value);
-              const displayValue = numValue === 0 ? "" : numValue.toString();
-              setLocalAmount(displayValue);
-            }
-            target.blur();
-          }
-        }}
-        placeholder="0.00"
-        className="w-24 px-2 py-1 text-sm border-2 border-purple-300 dark:border-purple-600 rounded dark:bg-gray-700 dark:text-white font-medium text-gray-700 dark:text-gray-300 focus:border-purple-500 focus:outline-none"
-      />
-    </div>
-  );
-}, (prevProps, nextProps) => {
-  // Always return true to prevent re-renders from prop changes
-  // Only re-render if bill ID changes (handled by useEffect)
-  return prevProps.bill.id === nextProps.bill.id;
-});
-
-export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmount, onUpdateBillAmount }: BillListProps) {
+export default function BillList({ bills, onTogglePayment, onEdit }: BillListProps) {
   const [openTabs, setOpenTabs] = useState<Record<string, boolean>>({
     "Rent": false,
     "Council Tax": false,
@@ -243,8 +118,6 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
 
   const renderBillGroup = (billType: string, monthlyGroups: Record<string, typeof bills>) => {
     const isOpen = openTabs[billType] !== false;
-    const isCreditCardPot = billType === "Credit Card Pot";
-    const isFlexibleBill = billType === "Water" || billType === "Electricity" || billType === "Credit Card Pot";
     
     // Get the next/earliest month's bills only
     const sortedMonths = Object.keys(monthlyGroups).sort();
@@ -252,14 +125,13 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
     const nextMonthBills = nextMonthKey ? monthlyGroups[nextMonthKey] : [];
     
     // Calculate total amount for next month only
-    // For Credit Card Pot, show total target amount
     const totalAmount = nextMonthBills.reduce((sum, bill) => sum + bill.totalAmount, 0);
     const totalCount = nextMonthBills.length;
     
-    // Calculate countdown to earliest due date (skip for Credit Card Pot and Water)
+    // Calculate countdown to earliest due date (skip for Water)
     const isWater = billType === "Water";
     let countdownText = "";
-    if (!isCreditCardPot && !isWater && nextMonthBills.length > 0) {
+    if (!isWater && nextMonthBills.length > 0) {
       const earliestBill = nextMonthBills.reduce((earliest, bill) => {
         const billDate = parseISO(bill.dueDate).getTime();
         const earliestDate = parseISO(earliest.dueDate).getTime();
@@ -284,11 +156,6 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
       }
     }
     
-    // For Credit Card Pot, calculate total paid
-    const creditCardBill = isCreditCardPot ? nextMonthBills[0] : null;
-    const totalPaid = creditCardBill 
-      ? (creditCardBill.ebePaidAmount || 0) + (creditCardBill.irePaidAmount || 0)
-      : 0;
 
     return (
       <div key={billType} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -303,11 +170,6 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
             <span className="font-semibold text-gray-900 dark:text-white">
               {billType}
             </span>
-            {isFlexibleBill && (
-              <span className="px-2 py-0.5 text-xs font-medium bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded">
-                No fixed amount
-              </span>
-            )}
             {countdownText && (
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {countdownText}
@@ -315,20 +177,9 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
             )}
           </div>
           <div className="flex items-center gap-3">
-            {isCreditCardPot ? (
-              <div className="text-right">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block">
-                  £{totalPaid.toFixed(2)} / £{totalAmount.toFixed(2)}
-                </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {((totalPaid / totalAmount) * 100).toFixed(0)}%
-                </span>
-              </div>
-            ) : (
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                £{totalAmount.toFixed(2)}
-              </span>
-            )}
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              £{totalAmount.toFixed(2)}
+            </span>
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {isOpen ? '▼' : '▶'}
             </span>
@@ -338,17 +189,6 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
           <div className="p-3 space-y-3 bg-gray-50 dark:bg-gray-900">
             {Object.keys(monthlyGroups).sort().map((monthKey) => {
               const monthBills = monthlyGroups[monthKey];
-              const isCreditCardPot = billType === "Credit Card Pot";
-              const isFlexibleAmount = billType === "Water" || billType === "Electricity";
-              
-              // For Credit Card Pot, use the single bill
-              const creditCardBill = isCreditCardPot ? monthBills[0] : null;
-              const ebePaidAmount = creditCardBill?.ebePaidAmount || 0;
-              const irePaidAmount = creditCardBill?.irePaidAmount || 0;
-              const totalPaid = ebePaidAmount + irePaidAmount;
-              
-              // For flexible amount bills (Water/Electricity), use the first bill
-              const flexibleBill = isFlexibleAmount ? monthBills[0] : null;
               
               // Recalculate monthTotal from current bills (in case amount was updated)
               const monthTotal = monthBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
@@ -412,73 +252,12 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                         </span>
                       )}
                     </div>
-                    {isFlexibleAmount && flexibleBill ? (
-                      <EditableAmountInput
-                        key={`editable-amount-${flexibleBill.id}`}
-                        bill={flexibleBill}
-                        monthBills={monthBills}
-                        onUpdateBillAmount={onUpdateBillAmount}
-                      />
-                    ) : (
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        £{monthTotal.toFixed(2)}
-                      </span>
-                    )}
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      £{monthTotal.toFixed(2)}
+                    </span>
                   </div>
 
-                  {isCreditCardPot ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Credit Card Pot - Amount Input for Ebe */}
-                      <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
-                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Ebe Paid</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={ebePaidAmount || ""}
-                            onChange={(e) => {
-                              const amount = parseFloat(e.target.value) || 0;
-                              if (creditCardBill && onUpdateAmount) {
-                                onUpdateAmount(creditCardBill.id, "Ebe", amount);
-                              }
-                            }}
-                            className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Credit Card Pot - Amount Input for Ire */}
-                      <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
-                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Ire Paid</p>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">£</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={irePaidAmount || ""}
-                            onChange={(e) => {
-                              const amount = parseFloat(e.target.value) || 0;
-                              if (creditCardBill && onUpdateAmount) {
-                                onUpdateAmount(creditCardBill.id, "Ire", amount);
-                              }
-                            }}
-                            className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-2 mt-2 p-2 bg-purple-50 dark:bg-purple-900/20 rounded border border-purple-200 dark:border-purple-800">
-                        <p className="text-xs text-purple-800 dark:text-purple-200">
-                          Total Paid: £{totalPaid.toFixed(2)} / £{monthTotal.toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                       {/* Ebe Payment */}
                       <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
                         <div className="flex-1">
@@ -566,7 +345,6 @@ export default function BillList({ bills, onTogglePayment, onEdit, onUpdateAmoun
                         </button>
                       </div>
                     </div>
-                  )}
                 </div>
               );
             })}
