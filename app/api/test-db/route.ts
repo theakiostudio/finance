@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { initDatabase, getBillsFromDB } from "@/lib/db";
 
+// Database connection test endpoint
 export async function GET() {
   try {
     // Try to initialize the database
