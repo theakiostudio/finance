@@ -5,6 +5,12 @@ let sql: any = null;
 try {
   const postgres = require('@vercel/postgres');
   sql = postgres.sql;
+  
+  // Check if POSTGRES_URL environment variable is set
+  if (!process.env.POSTGRES_URL && !process.env.POSTGRES_PRISMA_URL) {
+    console.log('Database package available but no connection string found. Using fallback storage.');
+    sql = null;
+  }
 } catch (error) {
   // Database not available, will use fallback
   console.log('Database package not available, using fallback storage');

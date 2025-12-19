@@ -22,44 +22,25 @@ function EditableAmountInput({
   monthBills: Bill[]; 
   onUpdateBillAmount?: (billId: string, amount: number) => void;
 }) {
-  // Initialize from bill prop only once
+  // Initialize from bill prop only once - use lazy initializer
   const [localAmount, setLocalAmount] = useState<string>(() => bill.totalAmount?.toString() || "0");
   const isEditingRef = useRef<boolean>(false);
   const billIdRef = useRef<string>(bill.id);
   const lastSyncedAmountRef = useRef<number>(bill.totalAmount || 0);
-  const hasInitializedRef = useRef<boolean>(false);
   
-  // Initialize refs on mount and when bill ID changes
+  // Only sync from props when bill ID actually changes (different bill)
+  // Do NOT sync when totalAmount changes to prevent resetting while typing
   useEffect(() => {
-    if (billIdRef.current !== bill.id || !hasInitializedRef.current) {
+    if (billIdRef.current !== bill.id) {
+      // This is a completely different bill
       billIdRef.current = bill.id;
       lastSyncedAmountRef.current = bill.totalAmount || 0;
-      if (!isEditingRef.current || !hasInitializedRef.current) {
+      // Only update if not currently editing
+      if (!isEditingRef.current) {
         setLocalAmount(bill.totalAmount?.toString() || "0");
       }
-      hasInitializedRef.current = true;
     }
   }, [bill.id]);
-  
-  // Only sync from props when not editing and amount changed from external source
-  useEffect(() => {
-    // CRITICAL: Skip if we're currently editing - this prevents resetting while typing
-    if (isEditingRef.current) {
-      return;
-    }
-    
-    // Skip if this is a different bill
-    if (billIdRef.current !== bill.id) {
-      return;
-    }
-    
-    const billAmount = bill.totalAmount || 0;
-    // Only update if the amount actually changed externally (not from our save)
-    if (Math.abs(lastSyncedAmountRef.current - billAmount) > 0.01) {
-      setLocalAmount(billAmount.toString());
-      lastSyncedAmountRef.current = billAmount;
-    }
-  }, [bill.id, bill.totalAmount]);
 
   const handleSave = async (value: string) => {
     const numValue = parseFloat(value);
