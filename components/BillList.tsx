@@ -48,7 +48,8 @@ function EditableAmountInput({
         setLocalAmount(bill.totalAmount?.toString() || "0");
       }
     }
-  }, [bill.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bill.id]); // Intentionally exclude bill.totalAmount to prevent reset while typing
 
   const handleSave = async (value: string) => {
     const numValue = parseFloat(value);
