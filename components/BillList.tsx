@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Bill, Person } from "@/types/expense";
 import { format, parseISO } from "date-fns";
 import { isBillOverdue } from "@/utils/balance";
@@ -23,19 +23,30 @@ function EditableAmountInput({
   onUpdateBillAmount?: (billId: string, amount: number) => void;
 }) {
   const [localAmount, setLocalAmount] = useState<string>(bill.totalAmount?.toString() || "0");
+  const [isEditing, setIsEditing] = useState(false);
+  const lastSyncedAmountRef = useRef<number>(bill.totalAmount || 0);
   
+  // Only sync from props when not editing and the value actually changed from external source
   useEffect(() => {
-    setLocalAmount(bill.totalAmount?.toString() || "0");
-  }, [bill.totalAmount]);
+    if (!isEditing) {
+      const billAmount = bill.totalAmount || 0;
+      // Only update if the bill's amount changed externally (not from our own save)
+      if (Math.abs(lastSyncedAmountRef.current - billAmount) > 0.01) {
+        setLocalAmount(billAmount.toString());
+        lastSyncedAmountRef.current = billAmount;
+      }
+    }
+  }, [bill.totalAmount, isEditing]);
 
   const handleSave = async (value: string) => {
     const numValue = parseFloat(value);
     const finalAmount = isNaN(numValue) || numValue < 0 ? 0 : numValue;
-    // Update local state immediately for better UX
-    setLocalAmount(finalAmount.toString());
     // Update the first bill in the month - handleUpdateBillAmount will update all bills in the same month
     if (onUpdateBillAmount && bill) {
       await onUpdateBillAmount(bill.id, finalAmount);
+      lastSyncedAmountRef.current = finalAmount;
+      // Allow sync from props again after a short delay
+      setTimeout(() => setIsEditing(false), 200);
     }
   };
 
@@ -48,7 +59,11 @@ function EditableAmountInput({
         min="0"
         value={localAmount}
         onChange={(e) => {
+          setIsEditing(true);
           setLocalAmount(e.target.value);
+        }}
+        onFocus={() => {
+          setIsEditing(true);
         }}
         onBlur={(e) => {
           handleSave(e.target.value);
