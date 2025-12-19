@@ -78,3 +78,4 @@ Currently uses browser localStorage, so data persists in your browser. For share
 - Categories and tags
 - Recurring expenses
 - Payment settlement tracking
+# finance
